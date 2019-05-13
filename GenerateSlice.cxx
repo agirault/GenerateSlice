@@ -5,8 +5,8 @@
 #include <vtkImageReslice.h>
 
 vtkSmartPointer<vtkImageData> GenerateSlice(vtkImageData* inputData,
-                                            int axis,
                                             int slice,
+                                            int axis = 2,
                                             int sizeX = -1,
                                             int sizeY = -1)
 {
@@ -94,7 +94,7 @@ int main(int, char *[])
   image->SetSpacing(0.1, 0.2, 0.15);
   image->AllocateScalars(VTK_INT,1);
 
-  vtkSmartPointer<vtkImageData> output = GenerateSlice(image, 2, 100, 10, 10);
+  vtkSmartPointer<vtkImageData> output = GenerateSlice(image, 100, 1, 10, 10);
   assert(output != nullptr);
   output->Print(std::cout);
 
