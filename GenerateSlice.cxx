@@ -1,14 +1,21 @@
+#include <vtkCamera.h>
+#include <vtkImageActor.h>
 #include <vtkImageData.h>
-#include <vtkIntArray.h>
-#include <vtkSmartPointer.h>
+#include <vtkImageMapper3D.h>
 #include <vtkImageResize.h>
 #include <vtkImageReslice.h>
+#include <vtkMatrix4x4.h>
+#include <vtkRenderer.h>
+#include <vtkRenderWindow.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkSmartPointer.h>
+#include <vtkXMLImageDataReader.h>
 
 vtkSmartPointer<vtkImageData> GenerateSlice(vtkImageData* inputData,
                                             int slice,
                                             int axis = 2,
-                                            int sizeX = -1,
-                                            int sizeY = -1)
+                                            int width = -1,
+                                            int height = -1)
 {
   // Ensure axis is valid (I,J,K)
   if (axis < 0 || axis > 2)
@@ -24,14 +31,49 @@ vtkSmartPointer<vtkImageData> GenerateSlice(vtkImageData* inputData,
     return nullptr;
   }
 
-  // Update output extent to select this slice
-  extent[axis*2] = slice;
-  extent[axis*2+1] = slice;
+  // Set the slice orientation
+  double origin[3];
+  double spacing[3];
+  inputData->GetOrigin(origin);
+  inputData->GetSpacing(spacing);
+  double sliceTranslation = origin[axis] + spacing[axis] * slice;
+  auto axes = vtkSmartPointer<vtkMatrix4x4>::New();
+  if (axis == 0)
+  {
+    const double sagittal[16] = {
+      0.,  0., +1.,  sliceTranslation,
+      -1.,  0.,  0., 0,
+      0., -1.,  0.,  0.,
+      0.,  0.,  0., +1.
+    };
+    axes->DeepCopy(sagittal);
+  }
+  else if (axis == 1)
+  {
+    const double coronal[16] = {
+      +1.,  0.,  0.,  0.,
+      0.,  0., +1.,  sliceTranslation,
+      0., -1.,  0.,  0.,
+      0.,  0.,  0., +1.
+    };
+    axes->DeepCopy(coronal);
+  }
+  if (axis == 2)
+  {
+    const double axial[16] = {
+      +1.,  0.,  0.,  0.,
+      0., +1.,  0.,  0.,
+      0.,  0., +1.,  sliceTranslation,
+      0.,  0.,  0., +1.
+    };
+    axes->DeepCopy(axial);
+  }
 
   // Reslice
   vtkSmartPointer<vtkImageReslice> reslice =
     vtkSmartPointer<vtkImageReslice>::New();
-  reslice->SetOutputExtent(extent);
+  reslice->SetOutputDimensionality(2);
+  reslice->SetResliceAxes(axes);
   reslice->SetInputData(inputData);
   reslice->Update();
 
@@ -45,41 +87,25 @@ vtkSmartPointer<vtkImageData> GenerateSlice(vtkImageData* inputData,
   };
 
   // Return right away if no resizing necessary
-  if (sizeX < 0 || sizeY < 0)
+  if (width < 0 || height < 0)
   {
     return getShallowCopyOfFilterOutput(reslice);
   }
 
   // Check sizes
-  int iDims[3], oDims[3];
-  oDims[axis] = 1;
-  if (axis == 0)
-  {
-    oDims[1] = sizeX;
-    oDims[2] = sizeY;
-  }
-  else if (axis == 1)
-  {
-    oDims[0] = sizeX;
-    oDims[2] = sizeY;
-  }
-  else if (axis == 2)
-  {
-    oDims[0] = sizeX;
-    oDims[1] = sizeY;
-  }
-  reslice->GetOutput()->GetDimensions(iDims);
-  if (iDims[0] == oDims[0] &&
-      iDims[1] == oDims[1] &&
-      iDims[2] == oDims[2])
+  int dims[3];
+  reslice->GetOutput()->GetDimensions(dims);
+  if (dims[0] == width && dims[1] == height)
   {
     return getShallowCopyOfFilterOutput(reslice);
   }
 
   // Resize
+  dims[0] = width;
+  dims[1] = height;
   vtkSmartPointer<vtkImageResize> resize =
     vtkSmartPointer<vtkImageResize>::New();
-  resize->SetOutputDimensions(oDims);
+  resize->SetOutputDimensions(dims);
   resize->SetInputData(reslice->GetOutput());
   resize->Update();
 
@@ -88,15 +114,38 @@ vtkSmartPointer<vtkImageData> GenerateSlice(vtkImageData* inputData,
 
 int main(int, char *[])
 {
-  vtkSmartPointer<vtkImageData> image =
-    vtkSmartPointer<vtkImageData>::New();
-  image->SetExtent(0, 200, 0, 100, 0, 150);
-  image->SetSpacing(0.1, 0.2, 0.15);
-  image->AllocateScalars(VTK_INT,1);
+  auto reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+  reader->SetFileName("/path/to/file.vti");
+  reader->Update();
+  auto image = reader->GetOutput();
+  image->Print(std::cout);
 
-  vtkSmartPointer<vtkImageData> output = GenerateSlice(image, 100, 1, 10, 10);
+  auto output = GenerateSlice(image,
+                              133, // slice number (range: extent along axis)
+                              0,   // axis (I:0, J:1, K:2)
+                              100, // 2d image width
+                              100  // 2d image height
+                              );
   assert(output != nullptr);
   output->Print(std::cout);
+
+  auto imageActor = vtkSmartPointer<vtkImageActor>::New();
+  imageActor->GetMapper()->SetInputData(output);
+
+  auto renderer = vtkSmartPointer<vtkRenderer>::New();
+  renderer->SetBackground(1, 0, 0);
+  renderer->AddActor2D(imageActor);
+
+  auto renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
+  renderWindow->AddRenderer(renderer);
+  renderWindow->SetSize(500, 500);
+
+  auto renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
+  renderWindowInteractor->SetRenderWindow(renderWindow);
+
+  renderWindow->Render();
+  renderer->ResetCamera();
+  renderWindowInteractor->Start();
 
   return EXIT_SUCCESS;
 }

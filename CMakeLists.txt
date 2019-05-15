@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 project(GenerateSlice)
 
 find_package(VTK COMPONENTS
+  vtkIOXML
   vtkCommonCore
   vtkCommonDataModel
   vtkImagingCore
