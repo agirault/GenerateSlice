@@ -1,13 +1,8 @@
-#include <vtkCamera.h>
-#include <vtkImageActor.h>
 #include <vtkImageData.h>
-#include <vtkImageMapper3D.h>
 #include <vtkImageResize.h>
 #include <vtkImageReslice.h>
 #include <vtkMatrix4x4.h>
-#include <vtkRenderer.h>
-#include <vtkRenderWindow.h>
-#include <vtkRenderWindowInteractor.h>
+#include <vtkPNGWriter.h>
 #include <vtkSmartPointer.h>
 #include <vtkXMLImageDataReader.h>
 
@@ -129,23 +124,10 @@ int main(int, char *[])
   assert(output != nullptr);
   output->Print(std::cout);
 
-  auto imageActor = vtkSmartPointer<vtkImageActor>::New();
-  imageActor->GetMapper()->SetInputData(output);
-
-  auto renderer = vtkSmartPointer<vtkRenderer>::New();
-  renderer->SetBackground(1, 0, 0);
-  renderer->AddActor2D(imageActor);
-
-  auto renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
-  renderWindow->AddRenderer(renderer);
-  renderWindow->SetSize(500, 500);
-
-  auto renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
-  renderWindowInteractor->SetRenderWindow(renderWindow);
-
-  renderWindow->Render();
-  renderer->ResetCamera();
-  renderWindowInteractor->Start();
+  auto pngWriter = vtkSmartPointer<vtkPNGWriter>::New();
+  pngWriter->SetFileName("/path/to/outputImage.png");
+  pngWriter->SetInputData(output);
+  pngWriter->Write();
 
   return EXIT_SUCCESS;
 }
